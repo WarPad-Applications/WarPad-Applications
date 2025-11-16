@@ -1,99 +1,116 @@
-// Lokasi: lib/services/database_service.dart
-
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product_model.dart';
 
-class DatabaseService {
-  static Database? _database;
-  static const String _tableName = 'products';
+class DataService extends GetxService {
+  final supabase = Supabase.instance.client;
+  late Box<Product> _productBox;
 
-  // Data awal produk Nasi Padang
-  final List<Product> _initialProducts = [
-    Product(
-      title: 'Rendang Sapi',
-      price: 30000,
-      imageUrl: 'https://picsum.photos/seed/rendang/600/400',
-    ),
-    Product(
-      title: 'Gulai Ayam',
-      price: 22000,
-      imageUrl: 'https://picsum.photos/seed/gulaiayam/600/400',
-    ),
-    Product(
-      title: 'Dendeng Balado',
-      price: 28000,
-      imageUrl: 'httpsum.photos/seed/dendeng/600/400',
-    ),
-    Product(
-      title: 'Sate Padang',
-      price: 25000,
-      imageUrl: 'https://picsum.photos/seed/satepadang/600/400',
-    ),
-    Product(
-      title: 'Gulai Ikan',
-      price: 20000,
-      imageUrl: 'https://picsum.photos/seed/gulaiikan/600/400',
-    ),
-    Product(
-      title: 'Daun Singkong',
-      price: 10000,
-      imageUrl: 'https://picsum.photos/seed/singkong/600/400',
-    ),
-  ];
+  // Status ketersediaan data
+  var isOnline = true.obs;
+  var lastSynced = 'Belum pernah disinkronkan'.obs;
 
-  // Getter DB
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDB();
-    return _database!;
+  @override
+  void onInit() {
+    super.onInit();
+    // Mendapatkan box Hive yang sudah dibuka di main.dart
+    _productBox = Hive.box<Product>('productBox');
   }
 
-  // Init DB
-  Future<Database> _initDB() async {
-    String dbPath = await getDatabasesPath();
-    String path = join(dbPath, 'nasipadang.db');
+  // =======================================================
+  // Fungsi Utama: Mengambil data dengan logika Failover
+  // =======================================================
+  Future<List<Product>> fetchProducts() async {
+    isOnline.value = true; // Asumsikan online di awal
 
-    // ❗ Hanya hapus database UNTUK DEBUG
-    // Comment baris di bawah kalau ingin database PERSISTEN
+    try {
+      // 1. Cek Koneksi Internet (opsional, tapi disarankan untuk failover cepat)
+      try {
+        final result = await InternetAddress.lookup('google.com');
+        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+          isOnline.value = true;
+        } else {
+          isOnline.value = false;
+        }
+      } on SocketException catch (_) {
+        isOnline.value = false;
+      }
 
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE $_tableName (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            price INTEGER NOT NULL,
-            imageUrl TEXT NOT NULL
-          )
-        ''');
+      // 2. Jika koneksi tersedia, coba ambil dari Supabase
+      if (isOnline.value) {
+        print('Mencoba mengambil data dari Supabase (Cloud)...');
+        
+        // Panggil tabel 'products' dari Supabase
+        final List<dynamic> response = await supabase
+            .from('products')
+            .select('*')
+            .order('id', ascending: true);
 
-        await _insertInitialData(db);
-      },
-    );
-  }
+        final products = response.map((json) => Product.fromJson(json)).toList();
 
-  // Masukkan data awal
-  Future<void> _insertInitialData(Database db) async {
-    final batch = db.batch();
-    for (var p in _initialProducts) {
-      batch.insert(_tableName, p.toMap());
+        // 3. Sinkronkan ke Hive (Local Cache)
+        await _syncToHive(products);
+        lastSynced.value = DateTime.now().toString().substring(0, 16);
+        print('Sinkronisasi ke Hive berhasil.');
+        
+        return products;
+      }
+    } catch (e) {
+      // Logika ini menangkap kegagalan Supabase (misalnya, timeout atau koneksi buruk)
+      print('Gagal mengambil dari Supabase ($e). Menggunakan Hive (Lokal).');
+      isOnline.value = false;
     }
-    await batch.commit();
-    print("DEBUG: Inserted ${_initialProducts.length} initial products");
+
+    // 4. Jika Supabase gagal, ambil dari Hive (Mode Offline/Failover)
+    print('Mengambil data dari Hive (Lokal Cache)...');
+    return _productBox.values.toList();
   }
 
-  // Ambil semua produk
-  Future<List<Product>> getProducts() async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(_tableName);
+  // =======================================================
+  // Fungsi Sinkronisasi (Menyimpan data terbaru ke Hive)
+  // =======================================================
+  Future<void> _syncToHive(List<Product> products) async {
+    await _productBox.clear(); // Bersihkan data lama
+    await _productBox.addAll(products); // Tambahkan data baru
+  }
 
-    print("DEBUG: jumlah baris dalam tabel $_tableName = ${maps.length}");
+  // =======================================================
+  // Fungsi Modifikasi (Wajib Lulus Eksperimen)
+  // =======================================================
 
-    return List.generate(maps.length, (i) {
-      return Product.fromMap(maps[i]);
-    });
+  // Uji: Modifikasi item di Hive saat Offline
+  Future<void> updateProductLocally(int index, String newName) async {
+    final productToUpdate = _productBox.getAt(index);
+    if (productToUpdate != null) {
+      // Membuat objek baru karena properti 'final'
+      final updatedProduct = Product(
+        id: productToUpdate.id,
+        name: newName,
+        description: productToUpdate.description,
+        price: productToUpdate.price,
+      );
+      await _productBox.putAt(index, updatedProduct);
+      
+      // Catat di sini: Meskipun offline, Hive berhasil diupdate
+      print('Produk di Hive (indeks $index) berhasil diupdate menjadi $newName');
+    }
+  }
+
+  // Uji: Simpan flag ke Shared Preferences saat Offline
+  Future<void> setOfflineFlag() async {
+    final prefs = Get.find<SharedPreferences>();
+    await prefs.setBool('offline_test_flag', true);
+    print('Flag Shared Preferences berhasil diset saat offline.');
+  }
+
+  // Uji: Baca flag dari Shared Preferences saat Offline
+  bool getOfflineFlag() {
+    final prefs = Get.find<SharedPreferences>();
+    final flag = prefs.getBool('offline_test_flag') ?? false;
+    print('Membaca flag Shared Preferences: $flag');
+    return flag;
   }
 }
