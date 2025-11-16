@@ -1,43 +1,53 @@
-// Lokasi: lib/main.dart
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Penting untuk inisialisasi DB
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-
-// Ganti import sesuai proyekmu
-import 'package:flutter_application/views/product_grid_page.dart';
+import 'services/shared_pref_service.dart';
+import 'services/hive_service.dart';
+import 'services/supabase_service.dart';
+import 'controllers/product_controller.dart';
+import 'views/product_grid_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ==========================
-  // WAJIB! (Windows & Linux)
-  // ==========================
-  sqfliteFfiInit();
-  databaseFactory = databaseFactoryFfi;
+  // 1) Initialize Supabase (ganti URL & KEY mu)
+  await Supabase.initialize(
+    url: "https://cffzpiijnxcfrpvtqbta.supabase.co",
+    anonKey:
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmZnpwaWlqbnhjZnJwdnRxYnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMTA2ODYsImV4cCI6MjA3ODg4NjY4Nn0.2htwdoXWQgcidpEVq78AuhB_aAYscmmcOm1JMI1WbU4",
+  );
 
-  runApp(const NasiPadangMartApp());
+  // 2) Init services via GetX
+  await Get.putAsync(() => SharedPrefService().init());
+  await Get.putAsync(() => HiveService().init());
+  await Get.putAsync(() => SupabaseService().init());
+
+  // 3) Put controller
+  Get.put(ProductController());
+
+  runApp(const MyApp());
 }
 
-class NasiPadangMartApp extends StatelessWidget {
-  const NasiPadangMartApp({super.key});
-
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
   @override
   Widget build(BuildContext context) {
-    return GetMaterialApp(
-      title: 'Nasi Padang Mart',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.amber,
-        scaffoldBackgroundColor: const Color(0xFFFFF8E1),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFFFC107),
-          foregroundColor: Colors.brown,
+    final SharedPrefService themeService = Get.find<SharedPrefService>();
+    return Obx(() {
+      return GetMaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: 'Nasi Padang Mart',
+        themeMode: themeService.isDarkMode.value
+            ? ThemeMode.dark
+            : ThemeMode.light,
+        theme: ThemeData(
+          primarySwatch: Colors.amber,
+          scaffoldBackgroundColor: const Color(0xFFFFF8E1),
         ),
-      ),
-      home: ProductGridPage(),
-    );
+        darkTheme: ThemeData.dark(),
+        home: const ProductGridPage(),
+      );
+    });
   }
 }

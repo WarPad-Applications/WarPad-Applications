@@ -1,190 +1,140 @@
-// Lokasi: lib/views/product_grid_page.dart
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-// Ganti 'flutter_application' dengan nama proyekmu
-import 'package:flutter_application/controllers/product_controller.dart';
-import 'package:flutter_application/models/product_model.dart';
+import '../controllers/product_controller.dart';
+import '../services/shared_pref_service.dart';
+import 'product_detail_page.dart';
+import '../widgets/product_card.dart';
 
 class ProductGridPage extends StatelessWidget {
-  ProductGridPage({super.key});
+  const ProductGridPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // "Nyalakan" atau "Temukan" Otak kita.
-    final ProductController controller = Get.put(ProductController());
+    final ProductController controller = Get.find<ProductController>();
+    final SharedPrefService themeService = Get.find<SharedPrefService>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Nasi Padang Mart'), centerTitle: true),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            // Obx ini membungkus UI yang bergantung pada state
-            return Obx(() {
-              // Tampilkan loading jika isLoading true
-              if (controller.isLoading.value) {
-                return const Center(child: CircularProgressIndicator());
-              }
-
-              // Jika selesai loading, tampilkan grid
-              final width = constraints.maxWidth;
-              final crossAxisCount = controller.calculateCrossAxisCount(width);
-              final childAspectRatio = controller.calculateChildAspectRatio(
-                crossAxisCount,
-                width,
-              );
-
-              return Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12.0,
-                  vertical: 8,
-                ),
-                child: GridView.builder(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: controller.products.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: childAspectRatio,
-                  ),
-                  itemBuilder: (context, index) {
-                    final p = controller.products[index];
-                    return ProductCard(
-                      product: p,
-                      priceLabel: controller.formatRupiah(p.price),
-                      onTap: () => controller.showProductDialog(p),
-                    );
-                  },
-                ),
-              );
-            });
-          },
-        ),
-      ),
-      floatingActionButton: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          FloatingActionButton(
-            onPressed: controller.openCartDialog,
-            child: const Icon(Icons.shopping_cart),
-          ),
-          // Obx untuk meng-update badge keranjang
-          Obx(
-            () => controller.cart.isEmpty
-                ? const SizedBox.shrink()
-                : Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Material(
-                      elevation: 2,
-                      shape: const CircleBorder(),
-                      color: Colors.redAccent,
-                      child: Padding(
-                        padding: const EdgeInsets.all(6.0),
-                        child: Text(
-                          '${controller.cart.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+      appBar: AppBar(
+        title: const Text('Nasi Padang Mart'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: Obx(
+              () => Icon(
+                themeService.isDarkMode.value
+                    ? Icons.dark_mode
+                    : Icons.light_mode,
+              ),
+            ),
+            onPressed: () => themeService.toggleTheme(),
+            tooltip: 'Toggle Theme',
           ),
         ],
+      ),
+      body: Obx(() {
+        if (controller.isLoading.value) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final items = controller.products;
+        if (items.isEmpty) {
+          return const Center(child: Text('Tidak ada produk'));
+        }
+
+        final width = MediaQuery.of(context).size.width;
+        final crossAxisCount = width < 600 ? 2 : (width < 900 ? 3 : 4);
+        final tileWidth = width / crossAxisCount;
+        final tileHeight = (tileWidth * 0.75) + 60;
+        final childAspectRatio = tileWidth / tileHeight;
+
+        return Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: GridView.builder(
+            itemCount: items.length,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: childAspectRatio,
+            ),
+            itemBuilder: (context, index) {
+              final p = items[index];
+              return GestureDetector(
+                onTap: () =>
+                    Get.to(() => ProductDetailPage(product: p, index: index)),
+                child: ProductCard(
+                  product: p,
+                  priceLabel: 'Rp ${p.price.toStringAsFixed(0)}',
+                ),
+              );
+            },
+          ),
+        );
+      }),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          // open cart dialog
+          showDialog(context: context, builder: (_) => _CartDialog());
+        },
+        child: const Icon(Icons.shopping_cart),
       ),
     );
   }
 }
 
-// ===================================================================
-// KODE ProductCard LENGKAP
-// ===================================================================
-class ProductCard extends StatelessWidget {
-  final Product product;
-  final String priceLabel;
-  final VoidCallback onTap;
-  const ProductCard({
-    super.key,
-    required this.product,
-    required this.priceLabel,
-    required this.onTap,
-  });
-
+class _CartDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      elevation: 3,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(12),
-                ),
-                child: AspectRatio(
-                  aspectRatio: 3 / 2,
-                  child: Image.network(
-                    product.imageUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return const Center(
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        color: Colors.grey.shade200,
-                        child: const Center(
-                          child: Icon(Icons.broken_image, size: 40),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8.0,
-                vertical: 10,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      color: Colors.brown,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    priceLabel,
-                    style: const TextStyle(
-                      color: Colors.deepOrange,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+    final ProductController c = Get.find<ProductController>();
+    return AlertDialog(
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Text('Keranjang'),
+          Obx(() => Text('(${c.cart.length})')),
+        ],
       ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Obx(() {
+          if (c.cart.isEmpty) return const Text('Keranjang kosong');
+          return ListView.separated(
+            shrinkWrap: true,
+            itemCount: c.cart.length,
+            separatorBuilder: (_, __) => const Divider(),
+            itemBuilder: (context, i) {
+              final it = c.cart[i];
+              return ListTile(
+                leading: Image.network(
+                  it.imageUrl,
+                  width: 56,
+                  fit: BoxFit.cover,
+                ),
+                title: Text(it.title),
+                subtitle: Text('Rp ${it.price.toStringAsFixed(0)}'),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => c.removeFromCart(i),
+                ),
+              );
+            },
+          );
+        }),
+      ),
+      actions: [
+        TextButton(onPressed: () => Get.back(), child: const Text('Tutup')),
+        Obx(
+          () => ElevatedButton(
+            onPressed: c.cart.isEmpty
+                ? null
+                : () {
+                    c.checkout();
+                    Get.back();
+                  },
+            child: Text(c.cart.isEmpty ? 'Kosong' : 'Checkout'),
+          ),
+        ),
+      ],
     );
   }
 }

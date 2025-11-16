@@ -1,30 +1,57 @@
-// Lokasi: lib/models/product_model.dart
+import 'package:hive/hive.dart';
 
+part 'product_model.g.dart';
+
+@HiveType(typeId: 0)
 class Product {
-  final int? id; // Wajib ada untuk database
-  final String title;
-  final int price;
-  final String imageUrl;
+  @HiveField(0)
+  String? id;
+
+  @HiveField(1)
+  String title;
+
+  @HiveField(2)
+  double price;
+
+  @HiveField(3)
+  String imageUrl;
+
+  @HiveField(4)
+  String? description;
+
+  @HiveField(5)
+  bool isAvailable;
 
   Product({
     this.id,
     required this.title,
     required this.price,
     required this.imageUrl,
+    this.description,
+    this.isAvailable = true,
   });
 
-  // Fungsi untuk mengubah Objek Product menjadi Map (untuk disimpan ke DB)
-  Map<String, dynamic> toMap() {
-    return {'title': title, 'price': price, 'imageUrl': imageUrl};
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id']?.toString(),
+      title: json['title'] ?? '',
+      price: (json['price'] is num)
+          ? (json['price'] as num).toDouble()
+          : double.tryParse(json['price'].toString()) ?? 0,
+      imageUrl: json['image_url'] ?? '',
+      description: json['description'],
+      isAvailable: json['is_available'] ?? true,
+    );
   }
 
-  // Fungsi untuk mengubah Map (dari DB) menjadi Objek Product
-  factory Product.fromMap(Map<String, dynamic> map) {
-    return Product(
-      id: map['id']?.toInt(),
-      title: map['title'] ?? '',
-      price: map['price']?.toInt() ?? 0,
-      imageUrl: map['imageUrl'] ?? '',
-    );
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'title': title,
+      'price': price,
+      'image_url': imageUrl,
+      'description': description,
+      'is_available': isAvailable,
+    };
   }
 }
