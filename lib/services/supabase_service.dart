@@ -12,10 +12,7 @@ class SupabaseService extends GetxService {
 
   Future<List<Product>> fetchProducts() async {
     try {
-      final res = await client
-          .from('products')
-          .select()
-          .order('created_at', ascending: false);
+      final res = await client.from('products').select("*");
 
       if (res.isEmpty) return [];
 
