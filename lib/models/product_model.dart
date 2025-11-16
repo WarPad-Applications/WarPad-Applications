@@ -38,9 +38,9 @@ class Product {
       price: (json['price'] is num)
           ? (json['price'] as num).toDouble()
           : double.tryParse(json['price'].toString()) ?? 0,
-      imageUrl: json['image_url'] ?? '',
+      imageUrl: json['image_url'] ?? json['imageUrl'] ?? '',
       description: json['description'],
-      isAvailable: json['is_available'] ?? true,
+      isAvailable: json['is_available'] ?? json['isAvailable'] ?? true,
     );
   }
 

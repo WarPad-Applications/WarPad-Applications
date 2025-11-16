@@ -10,7 +10,7 @@ class ProductController extends GetxController {
   var products = <Product>[].obs;
   var isLoading = false.obs;
 
-  // simple cart (list of Products)
+  // simple cart
   var cart = <Product>[].obs;
 
   @override
@@ -19,37 +19,45 @@ class ProductController extends GetxController {
     loadProducts();
   }
 
+  // ===================================================================
+  // LOAD PRODUCTS (OFFLINE FIRST)
+  // ===================================================================
   Future<void> loadProducts() async {
     isLoading.value = true;
+
     try {
-      // 1) load from Hive (fast)
+      // (1) Ambil dari Hive dulu (offline cache)
       final local = hiveService.getProducts();
       products.value = local;
 
-      // 2) try fetch from Supabase and override local cache (if success)
+      // (2) Coba sync dari Supabase
       final online = await supabaseService.fetchProducts();
       if (online.isNotEmpty) {
         products.value = online;
         await hiveService.replaceAll(online);
       }
     } catch (e) {
-      print('loadProducts error: $e');
-    } finally {
-      isLoading.value = false;
+      print("loadProducts error: $e");
     }
+
+    isLoading.value = false;
   }
 
+  // ===================================================================
+  // ADD PRODUCT
+  // ===================================================================
   Future<void> addProduct(Product p) async {
     isLoading.value = true;
+
     try {
-      // try add to supabase
+      // Tambah ke Supabase
       final created = await supabaseService.addProduct(p);
+
+      // Simpan juga ke Hive
       if (created != null) {
-        // save to hive
         await hiveService.addProduct(created);
         products.add(created);
       } else {
-        // fallback: save locally only
         await hiveService.addProduct(p);
         products.add(p);
       }
@@ -57,17 +65,23 @@ class ProductController extends GetxController {
       // offline fallback
       await hiveService.addProduct(p);
       products.add(p);
-    } finally {
-      isLoading.value = false;
     }
+
+    isLoading.value = false;
   }
 
+  // ===================================================================
+  // UPDATE PRODUCT
+  // ===================================================================
   Future<void> updateProduct(int index, Product updated) async {
     isLoading.value = true;
+
     try {
+      // update ke supabase jika ada ID
       final updatedOnline = (updated.id != null)
           ? await supabaseService.updateProduct(updated)
           : null;
+
       if (updatedOnline != null) {
         await hiveService.updateProductAt(index, updatedOnline);
         products[index] = updatedOnline;
@@ -76,46 +90,55 @@ class ProductController extends GetxController {
         products[index] = updated;
       }
     } catch (e) {
-      // fallback local update
+      // offline fallback
       await hiveService.updateProductAt(index, updated);
       products[index] = updated;
-    } finally {
-      isLoading.value = false;
     }
+
+    isLoading.value = false;
   }
 
+  // ===================================================================
+  // DELETE PRODUCT
+  // ===================================================================
   Future<void> deleteProduct(int index) async {
     final p = products[index];
     isLoading.value = true;
+
     try {
+      // hapus di cloud
       if (p.id != null) {
         await supabaseService.deleteProduct(p.id!);
       }
+
+      // hapus di hive
       await hiveService.deleteProductAt(index);
       products.removeAt(index);
     } catch (e) {
-      // in case of error, still remove locally
       await hiveService.deleteProductAt(index);
       products.removeAt(index);
-    } finally {
-      isLoading.value = false;
     }
+
+    isLoading.value = false;
   }
 
-  // CART
+  // ===================================================================
+  // CART SYSTEM
+  // ===================================================================
   void addToCart(Product p) {
     cart.add(p);
     Get.snackbar('Sukses', '${p.title} ditambahkan ke keranjang');
   }
 
-  void removeFromCart(int idx) {
-    cart.removeAt(idx);
+  void removeFromCart(int index) {
+    cart.removeAt(index);
   }
 
   void checkout() {
     final total = cart.fold<double>(0, (sum, it) => sum + it.price);
     final count = cart.length;
     cart.clear();
+
     Get.snackbar(
       'Checkout',
       '$count item — Total: Rp ${total.toStringAsFixed(0)}',
