@@ -1,3 +1,4 @@
+// path: lib/views/product_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../models/product_model.dart';
@@ -43,7 +44,6 @@ class ProductDetailPage extends StatelessWidget {
             const SizedBox(height: 8),
             ElevatedButton(
               onPressed: () async {
-                // contoh: hapus produk (hanya untuk testing/admin)
                 await controller.deleteProduct(index);
                 Get.back();
               },

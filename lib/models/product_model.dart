@@ -1,5 +1,5 @@
+// path: lib/models/product_model.dart
 import 'package:hive/hive.dart';
-
 part 'product_model.g.dart';
 
 @HiveType(typeId: 0)

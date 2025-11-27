@@ -1,46 +1,54 @@
+// path: lib/services/hive_service.dart
 import 'package:get/get.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/product_model.dart';
+import '../models/location_model.dart';
 
 class HiveService extends GetxService {
   static const String productBoxName = "productsBox";
+  static const String locationsBoxName = "locationsBox";
+
   late Box<Product> productsBox;
+  late Box<LocationModel> locationsBox;
 
   Future<HiveService> init() async {
     await Hive.initFlutter();
+
     if (!Hive.isAdapterRegistered(ProductAdapter().typeId)) {
       Hive.registerAdapter(ProductAdapter());
     }
-    productsBox = await Hive.openBox<Product>(productBoxName);
+    if (!Hive.isAdapterRegistered(LocationModelAdapter().typeId)) {
+      Hive.registerAdapter(LocationModelAdapter());
+    }
 
-    // Jika kosong, jangan otomatis masukkan—kecuali mau. (Opsional)
+    productsBox = await Hive.openBox<Product>(productBoxName);
+    locationsBox = await Hive.openBox<LocationModel>(locationsBoxName);
+
     return this;
   }
 
-  List<Product> getProducts() {
-    return productsBox.values.toList();
-  }
+  // Product helpers
+  List<Product> getProducts() => productsBox.values.toList();
 
   Future<void> replaceAll(List<Product> items) async {
     await productsBox.clear();
-    // ensure we store items with their id (some may be null)
-    for (var p in items) {
-      await productsBox.add(p);
-    }
+    for (var p in items) await productsBox.add(p);
   }
 
   Future<Product> addProduct(Product product) async {
-    // Jika id == null (belum dari Supabase), fine — disimpan di Hive dulu.
     final key = await productsBox.add(product);
-    final stored = productsBox.getAt(key)!;
-    return stored;
+    return productsBox.getAt(key)!;
   }
 
-  Future<void> updateProductAt(int index, Product product) async {
-    await productsBox.putAt(index, product);
-  }
+  Future<void> updateProductAt(int index, Product product) async =>
+      productsBox.putAt(index, product);
 
-  Future<void> deleteProductAt(int index) async {
-    await productsBox.deleteAt(index);
-  }
+  Future<void> deleteProductAt(int index) async => productsBox.deleteAt(index);
+
+  // Location helpers
+  Future<void> saveLocation(LocationModel loc) async => locationsBox.add(loc);
+
+  List<LocationModel> getLocations() => locationsBox.values.toList();
+
+  Future<void> clearLocations() async => locationsBox.clear();
 }

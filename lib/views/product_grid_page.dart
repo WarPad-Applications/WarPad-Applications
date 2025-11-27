@@ -1,6 +1,6 @@
+// path: lib/views/product_grid_page.dart
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-
 import '../controllers/product_controller.dart';
 import '../services/shared_pref_service.dart';
 import 'product_detail_page.dart';
@@ -19,7 +19,11 @@ class ProductGridPage extends StatelessWidget {
         title: const Text('Nasi Padang Mart'),
         centerTitle: true,
         actions: [
-          // Theme toggle
+          IconButton(
+            tooltip: 'Lokasi',
+            icon: const Icon(Icons.map_outlined),
+            onPressed: () => Get.toNamed('/location'),
+          ),
           IconButton(
             icon: Obx(
               () => Icon(
@@ -33,24 +37,15 @@ class ProductGridPage extends StatelessWidget {
         ],
       ),
 
-      // =========================
-      //         PRODUCT GRID
-      // =========================
       body: Obx(() {
-        if (controller.isLoading.value) {
+        if (controller.isLoading.value)
           return const Center(child: CircularProgressIndicator());
-        }
 
         final items = controller.products;
+        if (items.isEmpty) return const Center(child: Text('Tidak ada produk'));
 
-        if (items.isEmpty) {
-          return const Center(child: Text('Tidak ada produk'));
-        }
-
-        // Responsive grid
         final width = MediaQuery.of(context).size.width;
         final crossAxisCount = width < 600 ? 2 : (width < 900 ? 3 : 4);
-
         final tileWidth = width / crossAxisCount;
         final tileHeight = (tileWidth * 0.75) + 60;
         final childAspectRatio = tileWidth / tileHeight;
@@ -80,22 +75,15 @@ class ProductGridPage extends StatelessWidget {
         );
       }),
 
-      // =========================
-      //         CART BUTTON
-      // =========================
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showDialog(context: context, builder: (_) => _CartDialog());
-        },
+        onPressed: () =>
+            showDialog(context: context, builder: (_) => _CartDialog()),
         child: const Icon(Icons.shopping_cart),
       ),
     );
   }
 }
 
-// =============================
-//       CART DIALOG
-// =============================
 class _CartDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -113,7 +101,6 @@ class _CartDialog extends StatelessWidget {
         width: double.maxFinite,
         child: Obx(() {
           if (c.cart.isEmpty) return const Text('Keranjang kosong');
-
           return ListView.separated(
             shrinkWrap: true,
             itemCount: c.cart.length,

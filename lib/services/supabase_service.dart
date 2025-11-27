@@ -1,3 +1,4 @@
+// path: lib/services/supabase_service.dart
 import 'package:get/get.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/product_model.dart';
@@ -12,10 +13,8 @@ class SupabaseService extends GetxService {
 
   Future<List<Product>> fetchProducts() async {
     try {
-      final res = await client.from('products').select("*");
-
-      if (res.isEmpty) return [];
-
+      final res = await client.from('products').select('*');
+      if (res == null || (res is List && res.isEmpty)) return [];
       return (res as List)
           .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
           .toList();
@@ -32,7 +31,6 @@ class SupabaseService extends GetxService {
           .insert(product.toJson())
           .select()
           .single();
-
       return Product.fromJson(Map<String, dynamic>.from(response));
     } catch (e) {
       print("addProduct error: $e");
@@ -41,10 +39,8 @@ class SupabaseService extends GetxService {
   }
 
   Future<Product?> updateProduct(Product product) async {
-    if (product.id == null || product.id!.isEmpty) {
+    if (product.id == null || product.id!.isEmpty)
       throw ArgumentError("Product.id is required");
-    }
-
     try {
       final response = await client
           .from('products')
@@ -52,7 +48,6 @@ class SupabaseService extends GetxService {
           .eq('id', product.id!)
           .select()
           .single();
-
       return Product.fromJson(Map<String, dynamic>.from(response));
     } catch (e) {
       print("updateProduct error: $e");
@@ -67,6 +62,24 @@ class SupabaseService extends GetxService {
     } catch (e) {
       print("deleteProduct error: $e");
       return false;
+    }
+  }
+
+  Future<void> insertLocation(
+    String userId,
+    double lat,
+    double lng,
+    double accuracy,
+  ) async {
+    try {
+      await client.from('locations').insert({
+        'user_id': userId,
+        'lat': lat,
+        'lng': lng,
+        'accuracy': accuracy,
+      });
+    } catch (e) {
+      print("insertLocation error: $e");
     }
   }
 }
