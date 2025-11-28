@@ -5,8 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/location_service.dart';
-import '../services/hive_service.dart';
-import '../models/location_model.dart';
+// import '../services/hive_service.dart'; // Uncomment jika sudah ada
+// import '../models/location_model.dart'; // Uncomment jika sudah ada
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -72,17 +72,17 @@ class LocationController extends GetxController {
             currentPosition.value = pos;
             _moveMapTo(pos);
 
-            // Save to Hive if exists
+            // Simpan ke Hive (Uncomment jika HiveService sudah siap)
             try {
-              final hive = Get.find<HiveService>();
-              await hive.saveLocation(
-                LocationModel(
-                  lat: pos.latitude,
-                  lng: pos.longitude,
-                  accuracy: pos.accuracy,
-                  timestamp: DateTime.now(),
-                ),
-              );
+              // final hive = Get.find<HiveService>();
+              // await hive.saveLocation(
+              //   LocationModel(
+              //     lat: pos.latitude,
+              //     lng: pos.longitude,
+              //     accuracy: pos.accuracy,
+              //     timestamp: DateTime.now(),
+              //   ),
+              // );
             } catch (_) {}
           },
           onError: (err) {
@@ -105,7 +105,6 @@ class LocationController extends GetxController {
   void toggleGpsMode(bool v) {
     isGpsEnabled.value = v;
     if (isTracking.value) {
-      // restart tracking to apply accuracy change
       stopTracking();
       Future.delayed(const Duration(milliseconds: 150), () => startTracking());
     }
@@ -124,11 +123,14 @@ class LocationController extends GetxController {
 
   void _moveMapTo(Position pos) {
     try {
+      // PERBAIKAN V7: Akses zoom melalui .camera.zoom
       mapController.move(
         LatLng(pos.latitude, pos.longitude),
-        mapController.zoom,
+        mapController.camera.zoom,
       );
-    } catch (_) {}
+    } catch (_) {
+      // Handle jika map belum siap
+    }
   }
 
   void _showPermissionMessageIfNeeded() async {

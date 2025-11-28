@@ -21,19 +21,24 @@ class LocationView extends GetView<LocationController> {
             child: Obx(() {
               final pos = controller.currentPosition.value;
 
-              // <-- use non-const LatLng (some versions don't have const constructor)
+              // Gunakan LatLng default jika posisi belum ada
               final center = pos != null
                   ? LatLng(pos.latitude, pos.longitude)
-                  : LatLng(-6.200000, 106.816666);
+                  : const LatLng(-6.200000, 106.816666);
 
               return FlutterMap(
                 mapController: controller.mapController,
-                options: MapOptions(center: center, zoom: 15.0, minZoom: 3.0),
+                options: MapOptions(
+                  // PERBAIKAN V7: Ganti center -> initialCenter
+                  initialCenter: center,
+                  // PERBAIKAN V7: Ganti zoom -> initialZoom
+                  initialZoom: 15.0,
+                  minZoom: 3.0,
+                ),
                 children: [
                   TileLayer(
                     urlTemplate:
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    // Ganti userAgentPackageName dengan applicationId kalau perlu
                     userAgentPackageName: 'com.example.flutter_application',
                   ),
                   if (pos != null)
@@ -43,7 +48,8 @@ class LocationView extends GetView<LocationController> {
                           point: LatLng(pos.latitude, pos.longitude),
                           width: 40,
                           height: 40,
-                          builder: (ctx) => const Icon(
+                          // PERBAIKAN V7: Ganti builder -> child
+                          child: const Icon(
                             Icons.location_on,
                             size: 40,
                             color: Colors.red,
@@ -71,7 +77,11 @@ class LocationView extends GetView<LocationController> {
                     style: const TextStyle(fontSize: 14),
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    // Ganti Row dengan Wrap agar tidak overflow di layar kecil
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       ElevatedButton(
                         onPressed: controller.isLoading.value
@@ -87,7 +97,6 @@ class LocationView extends GetView<LocationController> {
                               )
                             : const Text('Refresh'),
                       ),
-                      const SizedBox(width: 8),
                       ElevatedButton(
                         onPressed: controller.isTracking.value
                             ? controller.stopTracking
@@ -98,8 +107,8 @@ class LocationView extends GetView<LocationController> {
                               : 'Start Live',
                         ),
                       ),
-                      const SizedBox(width: 8),
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           Switch(
                             value: controller.isGpsEnabled.value,
@@ -108,23 +117,20 @@ class LocationView extends GetView<LocationController> {
                           const Text('GPS'),
                         ],
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 8),
                       const Text('Distance:'),
-                      const SizedBox(width: 6),
-                      Obx(
-                        () => DropdownButton<int>(
-                          value: controller.distanceFilter.value,
-                          items: const [
-                            DropdownMenuItem(value: 1, child: Text('1m')),
-                            DropdownMenuItem(value: 3, child: Text('3m')),
-                            DropdownMenuItem(value: 5, child: Text('5m')),
-                            DropdownMenuItem(value: 10, child: Text('10m')),
-                          ],
-                          onChanged: (v) {
-                            if (v == null) return;
-                            controller.setDistanceFilter(v);
-                          },
-                        ),
+                      DropdownButton<int>(
+                        value: controller.distanceFilter.value,
+                        items: const [
+                          DropdownMenuItem(value: 1, child: Text('1m')),
+                          DropdownMenuItem(value: 3, child: Text('3m')),
+                          DropdownMenuItem(value: 5, child: Text('5m')),
+                          DropdownMenuItem(value: 10, child: Text('10m')),
+                        ],
+                        onChanged: (v) {
+                          if (v == null) return;
+                          controller.setDistanceFilter(v);
+                        },
                       ),
                     ],
                   ),
