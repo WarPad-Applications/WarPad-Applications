@@ -1,3 +1,16 @@
+// --- TAMBAHAN UNTUK FIREBASE (MODUL 6) ---
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Ini "Jembatan" agar Android tahu cara pakai Google Services
+        classpath("com.google.gms:google-services:4.4.2")
+    }
+}
+// -----------------------------------------
+
 allprojects {
     repositories {
         google()

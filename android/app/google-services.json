@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1047344657880",
+    "project_id": "warpad-notif",
+    "storage_bucket": "warpad-notif.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1047344657880:android:78af55d54cac4b3a41eead",
+        "android_client_info": {
+          "package_name": "com.example.flutter_application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3jad2yJ2xm_eIwwOKkgCYmXraCD_UBhU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

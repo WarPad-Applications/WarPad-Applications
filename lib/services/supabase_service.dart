@@ -11,11 +11,18 @@ class SupabaseService extends GetxService {
     return this;
   }
 
+  // ============================
+  // FETCH PRODUCTS
+  // ============================
   Future<List<Product>> fetchProducts() async {
     try {
-      final res = await client.from('products').select('*');
-      if (res == null || (res is List && res.isEmpty)) return [];
-      return (res as List)
+      final data = await client.from('products').select('*');
+
+      if (data == null || data is! List) {
+        return [];
+      }
+
+      return data
           .map((e) => Product.fromJson(Map<String, dynamic>.from(e)))
           .toList();
     } catch (e) {
@@ -24,37 +31,58 @@ class SupabaseService extends GetxService {
     }
   }
 
+  // ============================
+  // INSERT PRODUCT
+  // ============================
   Future<Product?> addProduct(Product product) async {
     try {
       final response = await client
           .from('products')
           .insert(product.toJson())
-          .select()
-          .single();
-      return Product.fromJson(Map<String, dynamic>.from(response));
+          .select();
+
+      if (response == null || response is! List || response.isEmpty) {
+        return null;
+      }
+
+      final map = Map<String, dynamic>.from(response.first);
+      return Product.fromJson(map);
     } catch (e) {
       print("addProduct error: $e");
       return null;
     }
   }
 
+  // ============================
+  // UPDATE PRODUCT
+  // ============================
   Future<Product?> updateProduct(Product product) async {
-    if (product.id == null || product.id!.isEmpty)
-      throw ArgumentError("Product.id is required");
+    if (product.id == null) {
+      throw ArgumentError("Product id is required for update");
+    }
+
     try {
       final response = await client
           .from('products')
           .update(product.toJson())
-          .eq('id', product.id!)
-          .select()
-          .single();
-      return Product.fromJson(Map<String, dynamic>.from(response));
+          .eq('id', product.id as String)
+          .select();
+
+      if (response == null || response is! List || response.isEmpty) {
+        return null;
+      }
+
+      final map = Map<String, dynamic>.from(response.first);
+      return Product.fromJson(map);
     } catch (e) {
       print("updateProduct error: $e");
       return null;
     }
   }
 
+  // ============================
+  // DELETE PRODUCT
+  // ============================
   Future<bool> deleteProduct(String id) async {
     try {
       await client.from('products').delete().eq('id', id);
@@ -65,6 +93,9 @@ class SupabaseService extends GetxService {
     }
   }
 
+  // ============================
+  // INSERT LOCATION (MODUL 5)
+  // ============================
   Future<void> insertLocation(
     String userId,
     double lat,
