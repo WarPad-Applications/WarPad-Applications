@@ -1,14 +1,10 @@
-// path: lib/controllers/location_controller.dart
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../services/location_service.dart';
-// import '../services/hive_service.dart'; // Uncomment jika sudah ada
-// import '../models/location_model.dart'; // Uncomment jika sudah ada
-import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
 
 class LocationController extends GetxController {
   final LocationService _service = LocationService();
@@ -16,11 +12,10 @@ class LocationController extends GetxController {
   final Rxn<Position> currentPosition = Rxn<Position>();
   final isLoading = false.obs;
   final isTracking = false.obs;
-  final isGpsEnabled = true.obs;
-  final distanceFilter = 5.obs; // in meters
+  final isGpsEnabled = true.obs; // Mode High Accuracy
+  final distanceFilter = 5.obs;
 
   final MapController mapController = MapController();
-
   StreamSubscription<Position>? _sub;
 
   @override
@@ -32,30 +27,62 @@ class LocationController extends GetxController {
   Future<void> _initLastKnown() async {
     try {
       final pos = await _service.getLastKnownPosition();
-      if (pos != null) currentPosition.value = pos;
+      if (pos != null) {
+        currentPosition.value = pos;
+        _moveMapTo(pos);
+      }
     } catch (_) {}
   }
 
-  Future<Position?> refreshOnce() async {
+  Future<void> refreshOnce() async {
     isLoading.value = true;
-    final pos = await _service.getCurrentPosition(useGps: isGpsEnabled.value);
-    if (pos == null) {
+
+    // 1. Cek apakah GPS (Hardware) Nyala?
+    bool isServiceEnabled = await _service.isLocationServiceEnabled();
+    if (!isServiceEnabled) {
       isLoading.value = false;
-      _showPermissionMessageIfNeeded();
-      return null;
+      _showDialogGpsMati(); // Tampilkan Dialog suruh nyalakan GPS
+      return;
     }
-    currentPosition.value = pos;
-    _moveMapTo(pos);
+
+    // 2. Cek Permission
+    LocationPermission permission = await _service.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      permission = await _service.requestPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        isLoading.value = false;
+        _showDialogPermissionDitolak();
+        return;
+      }
+    }
+
+    // 3. Ambil Posisi
+    final pos = await _service.getCurrentPosition(useGps: isGpsEnabled.value);
+
+    if (pos != null) {
+      currentPosition.value = pos;
+      _moveMapTo(pos);
+      Get.snackbar("Sukses", "Lokasi berhasil diperbarui!");
+    } else {
+      Get.snackbar(
+        "Gagal",
+        "Tidak dapat mengambil lokasi (Timeout/Error). Coba lagi.",
+      );
+    }
+
     isLoading.value = false;
-    return pos;
   }
 
   void startTracking({int? distance}) async {
     if (isTracking.value) return;
 
-    final ok = await _service.checkAndRequestPermission();
-    if (!ok) {
-      _showPermissionMessageIfNeeded();
+    // Cek Permission Dulu
+    LocationPermission permission = await _service.checkPermission();
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      await refreshOnce(); // Pancing request permission lewat refreshOnce
       return;
     }
 
@@ -68,35 +95,18 @@ class LocationController extends GetxController {
           distanceFilter: distanceFilter.value,
         )
         .listen(
-          (pos) async {
+          (pos) {
             currentPosition.value = pos;
             _moveMapTo(pos);
-
-            // Simpan ke Hive (Uncomment jika HiveService sudah siap)
-            try {
-              // final hive = Get.find<HiveService>();
-              // await hive.saveLocation(
-              //   LocationModel(
-              //     lat: pos.latitude,
-              //     lng: pos.longitude,
-              //     accuracy: pos.accuracy,
-              //     timestamp: DateTime.now(),
-              //   ),
-              // );
-            } catch (_) {}
           },
           onError: (err) {
-            Get.snackbar(
-              'Error',
-              'Tracking error: $err',
-              snackPosition: SnackPosition.BOTTOM,
-            );
+            print("Stream Error: $err");
+            stopTracking();
           },
         );
   }
 
   void stopTracking() {
-    if (!isTracking.value) return;
     isTracking.value = false;
     _sub?.cancel();
     _sub = null;
@@ -104,9 +114,10 @@ class LocationController extends GetxController {
 
   void toggleGpsMode(bool v) {
     isGpsEnabled.value = v;
+    // Restart tracking jika sedang aktif agar mode baru teraplikasi
     if (isTracking.value) {
       stopTracking();
-      Future.delayed(const Duration(milliseconds: 150), () => startTracking());
+      Future.delayed(const Duration(milliseconds: 200), () => startTracking());
     }
   }
 
@@ -115,7 +126,7 @@ class LocationController extends GetxController {
     if (isTracking.value) {
       stopTracking();
       Future.delayed(
-        const Duration(milliseconds: 150),
+        const Duration(milliseconds: 200),
         () => startTracking(distance: v),
       );
     }
@@ -123,38 +134,41 @@ class LocationController extends GetxController {
 
   void _moveMapTo(Position pos) {
     try {
-      // PERBAIKAN V7: Akses zoom melalui .camera.zoom
       mapController.move(
         LatLng(pos.latitude, pos.longitude),
-        mapController.camera.zoom,
+        15.0, // Zoom Level Default
       );
-    } catch (_) {
-      // Handle jika map belum siap
+    } catch (e) {
+      print("Map belum siap: $e");
     }
   }
 
-  void _showPermissionMessageIfNeeded() async {
-    final p = await Geolocator.checkPermission();
-    if (p == LocationPermission.denied ||
-        p == LocationPermission.deniedForever) {
-      Get.snackbar(
-        'Permission lokasi diperlukan',
-        'Aktifkan akses lokasi di pengaturan jika sudah ditolak.',
-        snackPosition: SnackPosition.BOTTOM,
-        mainButton: TextButton(
-          onPressed: () => openAppSettings(),
-          child: const Text(
-            'Buka Pengaturan',
-            style: TextStyle(color: Colors.white),
-          ),
-        ),
-      );
-    } else {
-      Get.snackbar(
-        'Lokasi tidak tersedia',
-        'Tidak dapat mengambil lokasi saat ini.',
-      );
-    }
+  // --- Dialog Helpers ---
+
+  void _showDialogGpsMati() {
+    Get.defaultDialog(
+      title: "GPS Mati",
+      middleText: "Fitur lokasi membutuhkan GPS. Mohon nyalakan GPS Anda.",
+      textConfirm: "Buka Settings",
+      textCancel: "Batal",
+      onConfirm: () {
+        Geolocator.openLocationSettings();
+        Get.back();
+      },
+    );
+  }
+
+  void _showDialogPermissionDitolak() {
+    Get.defaultDialog(
+      title: "Izin Ditolak",
+      middleText: "Aplikasi butuh izin lokasi untuk fitur ini.",
+      textConfirm: "Buka App Settings",
+      textCancel: "Batal",
+      onConfirm: () {
+        Geolocator.openAppSettings();
+        Get.back();
+      },
+    );
   }
 
   @override

@@ -1,45 +1,77 @@
-// path: lib/services/location_service.dart
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
+// import 'package:permission_handler/permission_handler.dart'; // Opsional jika pakai Geolocator sepenuhnya
 
 class LocationService {
-  Future<bool> checkAndRequestPermission() async {
-    final status = await Permission.location.status;
-    if (status.isGranted) return true;
-    final result = await Permission.location.request();
-    return result.isGranted;
+  // Cek apakah Layanan GPS (Hardware) Nyala?
+  Future<bool> isLocationServiceEnabled() async {
+    return await Geolocator.isLocationServiceEnabled();
+  }
+
+  // Cek Permission dengan Geolocator langsung (Lebih akurat untuk plugin ini)
+  Future<LocationPermission> checkPermission() async {
+    return await Geolocator.checkPermission();
+  }
+
+  Future<LocationPermission> requestPermission() async {
+    return await Geolocator.requestPermission();
   }
 
   Future<Position?> getCurrentPosition({
-    bool useGps = false,
+    bool useGps = true,
     Duration? timeout,
   }) async {
-    final ok = await checkAndRequestPermission();
-    if (!ok) return null;
-    final accuracy = useGps ? LocationAccuracy.high : LocationAccuracy.low;
     try {
-      final pos = await Geolocator.getCurrentPosition(
+      // 1. Cek GPS Nyala/Mati
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        // Return null atau throw error biar Controller tahu GPS mati
+        print("Log: GPS is disabled.");
+        return null;
+      }
+
+      // 2. Cek Izin
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print("Log: Permission denied.");
+          return null;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print("Log: Permission denied forever.");
+        return null;
+      }
+
+      // 3. Ambil Lokasi
+      final accuracy = useGps ? LocationAccuracy.high : LocationAccuracy.medium;
+      return await Geolocator.getCurrentPosition(
         desiredAccuracy: accuracy,
         timeLimit: timeout ?? const Duration(seconds: 10),
       );
-      return pos;
-    } catch (_) {
+    } catch (e) {
+      print("Log: Error getting location: $e");
       return null;
     }
   }
 
   Stream<Position> getPositionStream({
-    bool useGps = false,
+    bool useGps = true,
     int distanceFilter = 5,
   }) {
-    final accuracy = useGps ? LocationAccuracy.high : LocationAccuracy.low;
-    return Geolocator.getPositionStream(
-      locationSettings: LocationSettings(
-        accuracy: accuracy,
-        distanceFilter: distanceFilter,
-      ),
+    final accuracy = useGps ? LocationAccuracy.high : LocationAccuracy.medium;
+
+    // Settingan khusus Android/iOS
+    const LocationSettings locationSettings = LocationSettings(
+      accuracy: LocationAccuracy.high,
+      distanceFilter: 10,
     );
+
+    return Geolocator.getPositionStream(locationSettings: locationSettings);
   }
 
-  Future<Position?> getLastKnownPosition() => Geolocator.getLastKnownPosition();
+  Future<Position?> getLastKnownPosition() async {
+    return await Geolocator.getLastKnownPosition();
+  }
 }

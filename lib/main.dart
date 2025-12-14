@@ -14,12 +14,12 @@ import 'services/supabase_service.dart';
 import 'bindings/product_binding.dart';
 import 'views/product_grid_page.dart';
 import 'models/product_model.dart';
+import 'routes.dart'; // <--- (PENTING) Import file routes.dart
 
 // Background handler for Firebase Messaging
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // handling background message
   debugPrint("Background message: ${message.messageId}");
 }
 
@@ -30,7 +30,7 @@ Future<void> main() async {
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // 2) Init Supabase (using your url & anon key)
+  // 2) Init Supabase
   await Supabase.initialize(
     url: "https://cffzpiijnxcfrpvtqbta.supabase.co",
     anonKey:
@@ -40,14 +40,10 @@ Future<void> main() async {
   // 3) Init local storage & services
   await Hive.initFlutter();
 
-  // Register adapters (pastikan ProductAdapter sudah digenerate)
-  // e.g. Hive.registerAdapter(ProductAdapter());
-  // jika belum: jalankan `flutter pub run build_runner build --delete-conflicting-outputs`
-  // (pastikan file generated ada)
   try {
     Hive.registerAdapter(ProductAdapter());
   } catch (_) {
-    // ignore if already registered or adapter not ready yet
+    // ignore if already registered
   }
 
   // Init services via Get
@@ -59,11 +55,8 @@ Future<void> main() async {
   await notif.init();
   Get.put(notif);
 
-  // Option A (safe): register ProductController immediately to avoid "not found" on startup
-  // We'll also add the binding so other routes can lazy put as well.
-  Get.put(
-    ProductBinding().dependenciesReturnInstance(),
-  ); // helper to ensure controller exists
+  // Register Controller
+  Get.put(ProductBinding().dependenciesReturnInstance());
 
   runApp(const NasiPadangMartApp());
 }
@@ -80,7 +73,10 @@ class NasiPadangMartApp extends StatelessWidget {
         title: 'WarPad',
         debugShowCheckedModeBanner: false,
 
-        // set initialBinding so pages get their bindings automatically (optional)
+        // --- BAGIAN INI YANG DITAMBAHKAN UNTUK MEMPERBAIKI ERROR ---
+        initialRoute: AppPages.INITIAL, // Halaman awal ('/')
+        getPages: AppPages.pages, // Daftar rute (termasuk '/location')
+        // -----------------------------------------------------------
         initialBinding: ProductBinding(),
 
         themeMode: themeService.isDarkMode.value
@@ -96,9 +92,6 @@ class NasiPadangMartApp extends StatelessWidget {
           brightness: Brightness.dark,
           primarySwatch: Colors.amber,
         ),
-
-        // Use ProductGridPage as home (controller already bound by initialBinding)
-        home: const ProductGridPage(),
       );
     });
   }

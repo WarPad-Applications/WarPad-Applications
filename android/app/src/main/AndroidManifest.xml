@@ -1,11 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- PERMISSIONS WAJIB DI LUAR <application> -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
 
     <application
-        android:label="flutter_application"
+        android:label="WarPad"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -20,8 +22,8 @@
             android:windowSoftInputMode="adjustResize">
 
             <meta-data
-            android:name="io.flutter.embedding.android.NormalTheme"
-            android:resource="@style/NormalTheme"/>
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"/>
 
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -32,7 +34,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
     </application>
 
     <queries>
@@ -41,5 +42,4 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-
 </manifest>
