@@ -6,17 +6,16 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-// services & views & bindings
+// Import services & bindings
 import 'services/shared_pref_service.dart';
 import 'services/hive_service.dart';
 import 'services/notification_service.dart';
 import 'services/supabase_service.dart';
 import 'bindings/product_binding.dart';
-import 'views/product_grid_page.dart';
 import 'models/product_model.dart';
-import 'routes.dart'; // <--- (PENTING) Import file routes.dart
+import 'routes.dart';
 
-// Background handler for Firebase Messaging
+// Background Handler
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
@@ -26,37 +25,30 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1) Firebase
+  // 1. Init Firebase
   await Firebase.initializeApp();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
-  // 2) Init Supabase
+  // 2. Init Supabase (Gunakan URL & Key Kamu)
   await Supabase.initialize(
     url: "https://cffzpiijnxcfrpvtqbta.supabase.co",
     anonKey:
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNmZnpwaWlqbnhjZnJwdnRxYnRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzMTA2ODYsImV4cCI6MjA3ODg4NjY4Nn0.2htwdoXWQgcidpEVq78AuhB_aAYscmmcOm1JMI1WbU4",
   );
 
-  // 3) Init local storage & services
-  await Hive.initFlutter();
-
-  try {
-    Hive.registerAdapter(ProductAdapter());
-  } catch (_) {
-    // ignore if already registered
-  }
-
-  // Init services via Get
+  // 3. Init Services
   await Get.putAsync(() => SharedPrefService().init());
-  await Get.putAsync(() => HiveService().init());
+
+  // Hive Service (Pastikan model adapter sudah dibuat oleh build_runner nanti)
+  final hiveService = HiveService();
+  await hiveService.init();
+  Get.put(hiveService);
+
   await Get.putAsync(() => SupabaseService().init());
 
   final notif = NotificationService();
   await notif.init();
   Get.put(notif);
-
-  // Register Controller
-  Get.put(ProductBinding().dependenciesReturnInstance());
 
   runApp(const NasiPadangMartApp());
 }
@@ -73,25 +65,25 @@ class NasiPadangMartApp extends StatelessWidget {
         title: 'WarPad',
         debugShowCheckedModeBanner: false,
 
-        // --- BAGIAN INI YANG DITAMBAHKAN UNTUK MEMPERBAIKI ERROR ---
-        initialRoute: AppPages.INITIAL, // Halaman awal ('/')
-        getPages: AppPages.pages, // Daftar rute (termasuk '/location')
-        // -----------------------------------------------------------
+        // Rute
+        initialRoute: AppPages.INITIAL,
+        getPages: AppPages.pages,
+
+        // Binding Awal (Akan memuat ProductController & AuthController)
         initialBinding: ProductBinding(),
 
+        // Tema
         themeMode: themeService.isDarkMode.value
             ? ThemeMode.dark
             : ThemeMode.light,
-
         theme: ThemeData(
-          brightness: Brightness.light,
-          primarySwatch: Colors.amber,
-          scaffoldBackgroundColor: const Color(0xFFFFF8E1),
+          useMaterial3: true,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: const Color(0xFFFF5722),
+          ), // Deep Orange
+          scaffoldBackgroundColor: Colors.grey[50],
         ),
-        darkTheme: ThemeData(
-          brightness: Brightness.dark,
-          primarySwatch: Colors.amber,
-        ),
+        darkTheme: ThemeData.dark(),
       );
     });
   }

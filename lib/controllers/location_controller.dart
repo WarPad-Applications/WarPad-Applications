@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,14 +7,23 @@ import '../services/location_service.dart';
 
 class LocationController extends GetxController {
   final LocationService _service = LocationService();
+  final MapController mapController = MapController();
 
+  // STATE VARIABLES
   final Rxn<Position> currentPosition = Rxn<Position>();
   final isLoading = false.obs;
-  final isTracking = false.obs;
-  final isGpsEnabled = true.obs; // Mode High Accuracy
-  final distanceFilter = 5.obs;
 
-  final MapController mapController = MapController();
+  final isTracking = false.obs; // Status Live Tracking
+  final isGpsEnabled = true.obs; // Status Mode GPS
+  final distanceFilter = 10.obs; // Filter Jarak (Meter)
+
+  // --- LOGIC ONGKIR & JARAK (ALAMAT BARU: BULULAWANG) ---
+  // Koordinat diperbarui ke area Jl. Raya Bululawang No.45
+  final LatLng warungLocation = const LatLng(-8.077832, 112.641220);
+
+  final distanceToWarung = 0.0.obs;
+  final deliveryFee = 0.0.obs;
+
   StreamSubscription<Position>? _sub;
 
   @override
@@ -27,83 +35,76 @@ class LocationController extends GetxController {
   Future<void> _initLastKnown() async {
     try {
       final pos = await _service.getLastKnownPosition();
-      if (pos != null) {
-        currentPosition.value = pos;
-        _moveMapTo(pos);
-      }
+      if (pos != null) _updatePosition(pos);
     } catch (_) {}
   }
 
   Future<void> refreshOnce() async {
     isLoading.value = true;
 
-    // 1. Cek apakah GPS (Hardware) Nyala?
-    bool isServiceEnabled = await _service.isLocationServiceEnabled();
-    if (!isServiceEnabled) {
+    // Cek Service GPS
+    bool serviceEnabled = await _service.isLocationServiceEnabled();
+    if (!serviceEnabled) {
       isLoading.value = false;
-      _showDialogGpsMati(); // Tampilkan Dialog suruh nyalakan GPS
+      Get.snackbar("GPS Mati", "Mohon nyalakan GPS");
       return;
     }
 
-    // 2. Cek Permission
+    // Cek Permission
     LocationPermission permission = await _service.checkPermission();
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
+    if (permission == LocationPermission.denied) {
       permission = await _service.requestPermission();
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied) {
         isLoading.value = false;
-        _showDialogPermissionDitolak();
         return;
       }
     }
 
-    // 3. Ambil Posisi
+    // Ambil Lokasi
     final pos = await _service.getCurrentPosition(useGps: isGpsEnabled.value);
-
     if (pos != null) {
-      currentPosition.value = pos;
-      _moveMapTo(pos);
-      Get.snackbar("Sukses", "Lokasi berhasil diperbarui!");
-    } else {
-      Get.snackbar(
-        "Gagal",
-        "Tidak dapat mengambil lokasi (Timeout/Error). Coba lagi.",
-      );
+      _updatePosition(pos);
     }
-
     isLoading.value = false;
   }
 
-  void startTracking({int? distance}) async {
+  // --- FUNGSI UPDATE POSISI & ONGKIR ---
+  void _updatePosition(Position pos) {
+    currentPosition.value = pos;
+
+    // Hitung Jarak ke Warung (dalam KM)
+    double distMeters = Geolocator.distanceBetween(
+      pos.latitude,
+      pos.longitude,
+      warungLocation.latitude,
+      warungLocation.longitude,
+    );
+    distanceToWarung.value = distMeters / 1000;
+
+    // Hitung Ongkir (Rp 2000/km, Min Rp 5000)
+    double fee = distanceToWarung.value * 2000;
+    if (fee < 5000) fee = 5000;
+    deliveryFee.value = fee;
+
+    // Pindahkan Kamera Peta
+    try {
+      mapController.move(LatLng(pos.latitude, pos.longitude), 15.0);
+    } catch (_) {}
+  }
+
+  // --- FUNGSI TRACKING ---
+  void startTracking() async {
     if (isTracking.value) return;
-
-    // Cek Permission Dulu
-    LocationPermission permission = await _service.checkPermission();
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      await refreshOnce(); // Pancing request permission lewat refreshOnce
-      return;
-    }
-
     isTracking.value = true;
-    if (distance != null) distanceFilter.value = distance;
 
     _sub = _service
         .getPositionStream(
           useGps: isGpsEnabled.value,
           distanceFilter: distanceFilter.value,
         )
-        .listen(
-          (pos) {
-            currentPosition.value = pos;
-            _moveMapTo(pos);
-          },
-          onError: (err) {
-            print("Stream Error: $err");
-            stopTracking();
-          },
-        );
+        .listen((pos) {
+          _updatePosition(pos);
+        });
   }
 
   void stopTracking() {
@@ -112,68 +113,26 @@ class LocationController extends GetxController {
     _sub = null;
   }
 
-  void toggleGpsMode(bool v) {
-    isGpsEnabled.value = v;
-    // Restart tracking jika sedang aktif agar mode baru teraplikasi
+  void toggleGpsMode(bool val) {
+    isGpsEnabled.value = val;
+    // Restart tracking kalau sedang jalan biar mode baru aktif
     if (isTracking.value) {
       stopTracking();
       Future.delayed(const Duration(milliseconds: 200), () => startTracking());
     }
   }
 
-  void setDistanceFilter(int v) {
-    distanceFilter.value = v;
+  void setDistanceFilter(int val) {
+    distanceFilter.value = val;
     if (isTracking.value) {
       stopTracking();
-      Future.delayed(
-        const Duration(milliseconds: 200),
-        () => startTracking(distance: v),
-      );
+      Future.delayed(const Duration(milliseconds: 200), () => startTracking());
     }
-  }
-
-  void _moveMapTo(Position pos) {
-    try {
-      mapController.move(
-        LatLng(pos.latitude, pos.longitude),
-        15.0, // Zoom Level Default
-      );
-    } catch (e) {
-      print("Map belum siap: $e");
-    }
-  }
-
-  // --- Dialog Helpers ---
-
-  void _showDialogGpsMati() {
-    Get.defaultDialog(
-      title: "GPS Mati",
-      middleText: "Fitur lokasi membutuhkan GPS. Mohon nyalakan GPS Anda.",
-      textConfirm: "Buka Settings",
-      textCancel: "Batal",
-      onConfirm: () {
-        Geolocator.openLocationSettings();
-        Get.back();
-      },
-    );
-  }
-
-  void _showDialogPermissionDitolak() {
-    Get.defaultDialog(
-      title: "Izin Ditolak",
-      middleText: "Aplikasi butuh izin lokasi untuk fitur ini.",
-      textConfirm: "Buka App Settings",
-      textCancel: "Batal",
-      onConfirm: () {
-        Geolocator.openAppSettings();
-        Get.back();
-      },
-    );
   }
 
   @override
   void onClose() {
-    _sub?.cancel();
+    stopTracking();
     super.onClose();
   }
 }

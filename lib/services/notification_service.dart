@@ -1,38 +1,41 @@
-// Lokasi: lib/services/notification_service.dart
-
-import 'dart:convert'; // Untuk decode json
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:get/get.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Service utama untuk menangani notifikasi
 class NotificationService extends GetxService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  // Setup Channel Notifikasi Android (Agar bunyi custom)
+  // Instance Supabase
+  final SupabaseClient _supabase = Supabase.instance.client;
+
+  // Channel dengan Custom Sound (Dikembalikan dari kode lama)
   final AndroidNotificationChannel _androidChannel =
       const AndroidNotificationChannel(
-        'high_importance_channel', // ID Channel
-        'High Importance Notifications', // Nama Channel
+        'high_importance_channel',
+        'High Importance Notifications',
         description: 'Channel ini untuk notifikasi penting',
         importance: Importance.max,
         playSound: true,
-        // Pastikan file 'notif_padang.mp3' ada di android/app/src/main/res/raw/
-        sound: RawResourceAndroidNotificationSound('notif_padang'),
+        sound: RawResourceAndroidNotificationSound(
+          'notif_padang',
+        ), // Suara Custom
       );
 
   Future<void> init() async {
-    // 1. Minta Izin Notifikasi
+    // 1. Minta Izin Firebase
     await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
     );
+    await _firebaseMessaging.subscribeToTopic('promo');
 
-    // 2. Setup Local Notification
+    // 2. Setup Local Notification & Click Handler
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -41,160 +44,184 @@ class NotificationService extends GetxService {
 
     await _localNotificationsPlugin.initialize(
       initializationSettings,
-      // LOGIKA SAAT NOTIFIKASI DIKLIK (Posisi Foreground)
+      // Handler saat notifikasi diklik (Navigasi)
       onDidReceiveNotificationResponse: (details) {
         if (details.payload != null) {
           try {
             Map<String, dynamic> data = jsonDecode(details.payload!);
             _handleMessageData(data);
           } catch (e) {
-            print("Error parsing payload: $e");
+            debugPrint("Error parsing payload: $e");
           }
         }
       },
     );
 
-    // Buat Channel di Android System
+    // Create Channel
     final platform = _localNotificationsPlugin
         .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin
         >();
     await platform?.createNotificationChannel(_androidChannel);
 
-    // 3. HANDLER SAAT TERMINATED (Aplikasi Mati Total)
+    // 3. SETUP FIREBASE LISTENERS (FCM)
+    // Terminated State
     RemoteMessage? initialMessage = await _firebaseMessaging
         .getInitialMessage();
     if (initialMessage != null) {
       _handleMessage(initialMessage);
     }
 
-    // 4. HANDLER SAAT BACKGROUND (Aplikasi Di-minimize)
+    // Background State
     FirebaseMessaging.onMessageOpenedApp.listen(_handleMessage);
 
-    // 5. HANDLER SAAT FOREGROUND (Aplikasi Sedang Dibuka)
+    // Foreground State (Saat aplikasi dibuka)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       final notification = message.notification;
       final android = message.notification?.android;
 
-      // Tampilkan banner notifikasi manual
       if (notification != null && android != null) {
-        _localNotificationsPlugin.show(
-          notification.hashCode,
-          notification.title,
-          notification.body,
-          NotificationDetails(
-            android: AndroidNotificationDetails(
-              _androidChannel.id,
-              _androidChannel.name,
-              channelDescription: _androidChannel.description,
-              icon: '@mipmap/ic_launcher',
-              playSound: true,
-              sound: const RawResourceAndroidNotificationSound('notif_padang'),
-            ),
-          ),
-          payload: jsonEncode(message.data),
+        // Tampilkan notifikasi FCM menggunakan helper kita
+        showLocalNotification(
+          id: notification.hashCode,
+          title: notification.title ?? 'Info',
+          body: notification.body ?? '',
+          payload: jsonEncode(message.data), // Simpan data untuk navigasi
         );
       }
     });
 
-    // --- CETAK TOKEN AGAR BISA DITEST ---
-    final fcmToken = await _firebaseMessaging.getToken();
-    print('=======================================');
-    print('FCM TOKEN SAYA: $fcmToken');
-    print('=======================================');
+    // 4. SETUP SUPABASE LISTENERS (REALTIME)
+    _listenToOrderChanges();
+    _listenToReservationChanges();
+  }
+
+  // --- SUPABASE REALTIME LOGIC ---
+
+  void _listenToOrderChanges() {
+    _supabase.from('orders').stream(primaryKey: ['id']).listen((data) {
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) return;
+
+      for (var order in data) {
+        // Pastikan order milik user yang sedang login
+        if (order['user_id'] == currentUser.id) {
+          if (order['status'] == 'Selesai') {
+            showLocalNotification(
+              id: order['id'].hashCode,
+              title: "Pesanan Siap! 🍽️",
+              body: "Pesanan kamu sudah selesai. Silakan diambil/dinikmati.",
+              payload: jsonEncode({'tipe': 'order', 'id': order['id']}),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  void _listenToReservationChanges() {
+    _supabase.from('reservations').stream(primaryKey: ['id']).listen((data) {
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) return;
+
+      for (var res in data) {
+        if (res['user_id'] == currentUser.id) {
+          if (res['status'] == 'Approved') {
+            showLocalNotification(
+              id: res['id'].hashCode,
+              title: "Reservasi Diterima! ✅",
+              body: "Booking meja tgl ${res['date']} sudah di-ACC admin.",
+              payload: jsonEncode({'tipe': 'reservation', 'id': res['id']}),
+            );
+          } else if (res['status'] == 'Rejected') {
+            showLocalNotification(
+              id: res['id'].hashCode,
+              title: "Reservasi Ditolak ❌",
+              body: "Maaf, booking meja kamu tidak dapat diproses.",
+              payload: jsonEncode({'tipe': 'reservation', 'id': res['id']}),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  // --- HELPER METHODS ---
+
+  // Helper menampilkan notifikasi (Digunakan oleh FCM & Supabase)
+  void showLocalNotification({
+    required int id,
+    required String title,
+    required String body,
+    String? payload,
+  }) {
+    _localNotificationsPlugin.show(
+      id,
+      title,
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _androidChannel.id,
+          _androidChannel.name,
+          channelDescription: _androidChannel.description,
+          icon: '@mipmap/ic_launcher',
+          playSound: true,
+          // Menggunakan suara custom
+          sound: const RawResourceAndroidNotificationSound('notif_padang'),
+          importance: Importance.max,
+          priority: Priority.high,
+        ),
+      ),
+      payload: payload,
+    );
   }
 
   void _handleMessage(RemoteMessage message) {
     _handleMessageData(message.data);
   }
 
-  // --- LOGIKA NAVIGASI PINTAR (DENGAN RETRY) ---
+  // Logika Navigasi (Route Handling)
   void _handleMessageData(Map<String, dynamic> data) {
-    print("🔔 MENGECEK DATA NAVIGASI: $data");
-
+    // 1. Handle Promo (Dari FCM)
     if (data['tipe'] == 'promo') {
-      // Cek apakah Navigator (GetX) sudah siap?
       if (Get.key.currentState == null) {
-        print("⏳ Navigator belum siap... Menunggu 1 detik.");
-        // Jika belum siap, tunggu 1 detik lalu coba lagi
         Future.delayed(const Duration(milliseconds: 1000), () {
           _handleMessageData(data);
         });
         return;
       }
-
-      print("✅ Navigator SIAP! Pindah ke Promo Page...");
-      // Jeda sedikit agar transisi mulus
       Future.delayed(const Duration(milliseconds: 500), () {
         Get.to(() => PromoPage(data: data));
       });
-    } else {
-      print("❌ Tipe bukan 'promo' atau data kosong. Stay di Home.");
     }
+
+    // 2. Bisa ditambahkan handle untuk Order/Reservasi jika perlu
+    // else if (data['tipe'] == 'order') { Get.to(...) }
   }
 }
 
-// --- HALAMAN PROMO (Langsung di sini) ---
+// --- HALAMAN PROMO (Tetap dipertahankan) ---
 class PromoPage extends StatelessWidget {
   final Map<String, dynamic>? data;
-
   const PromoPage({super.key, this.data});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("PROMO SPESIAL"),
-        backgroundColor: Colors.redAccent,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: const Text("PROMO"), backgroundColor: Colors.red),
       body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.local_offer_rounded,
-                size: 100,
-                color: Colors.red,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                "Selamat! Kamu Dapat Promo!",
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 10),
-              const Text("Tunjukkan layar ini ke kasir"),
-              const SizedBox(height: 30),
-              // Menampilkan data
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.yellow[100],
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: Colors.orange),
-                ),
-                child: Column(
-                  children: [
-                    // MENGGUNAKAN 'id_produk'
-                    Text(
-                      "Kode Produk: ${data?['id_produk'] ?? '-'}",
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const Divider(),
-                    Text("Tipe Pesan: ${data?['tipe'] ?? '-'}"),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-              ElevatedButton(
-                onPressed: () => Get.back(),
-                child: const Text("Kembali Belanja"),
-              ),
-            ],
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.local_offer, size: 80, color: Colors.red),
+            const SizedBox(height: 20),
+            Text("Kode: ${data?['id_produk'] ?? '-'}"),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Get.back(),
+              child: const Text("Tutup"),
+            ),
+          ],
         ),
       ),
     );

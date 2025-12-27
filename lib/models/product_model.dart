@@ -1,4 +1,3 @@
-// path: lib/models/product_model.dart
 import 'package:hive/hive.dart';
 part 'product_model.g.dart';
 
@@ -22,6 +21,10 @@ class Product {
   @HiveField(5)
   bool isAvailable;
 
+  // --- TAMBAHAN BARU (Solusi Error Category) ---
+  @HiveField(6)
+  String category;
+
   Product({
     this.id,
     required this.title,
@@ -29,6 +32,7 @@ class Product {
     required this.imageUrl,
     this.description,
     this.isAvailable = true,
+    this.category = 'Makanan', // Default value biar aman
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -41,6 +45,7 @@ class Product {
       imageUrl: json['image_url'] ?? json['imageUrl'] ?? '',
       description: json['description'],
       isAvailable: json['is_available'] ?? json['isAvailable'] ?? true,
+      category: json['category'] ?? 'Makanan', // Ambil dari DB
     );
   }
 
@@ -52,6 +57,7 @@ class Product {
       'image_url': imageUrl,
       'description': description,
       'is_available': isAvailable,
+      'category': category,
     };
   }
 }

@@ -1,142 +1,149 @@
-// path: lib/views/location_view.dart
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:get/get.dart';
 import 'package:latlong2/latlong.dart';
 import '../controllers/location_controller.dart';
 
-class LocationView extends GetView<LocationController> {
+class LocationView extends StatelessWidget {
   const LocationView({super.key});
 
   @override
   Widget build(BuildContext context) {
+    // Pastikan LocationController sudah di-put (di binding atau di sini)
+    final LocationController controller = Get.put(LocationController());
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Location (Live/GPS/Network)'),
-        centerTitle: true,
-      ),
-      body: Column(
+      appBar: AppBar(title: const Text("Lokasi Warung"), centerTitle: true),
+      body: Stack(
         children: [
-          Expanded(
-            child: Obx(() {
-              final pos = controller.currentPosition.value;
+          // 1. PETA
+          Obx(() {
+            final myPos = controller.currentPosition.value;
+            // Pusat peta: Kalau user ada lokasi pakai user, kalau gak pakai warung
+            final center = myPos != null
+                ? LatLng(myPos.latitude, myPos.longitude)
+                : controller.warungLocation;
 
-              // Gunakan LatLng default jika posisi belum ada
-              final center = pos != null
-                  ? LatLng(pos.latitude, pos.longitude)
-                  : const LatLng(-6.200000, 106.816666);
-
-              return FlutterMap(
-                mapController: controller.mapController,
-                options: MapOptions(
-                  // PERBAIKAN V7: Ganti center -> initialCenter
-                  initialCenter: center,
-                  // PERBAIKAN V7: Ganti zoom -> initialZoom
-                  initialZoom: 15.0,
-                  minZoom: 3.0,
+            return FlutterMap(
+              mapController: controller.mapController,
+              options: MapOptions(initialCenter: center, initialZoom: 15.0),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.warpad.app',
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName: 'com.example.flutter_application',
-                  ),
-                  if (pos != null)
-                    MarkerLayer(
-                      markers: [
-                        Marker(
-                          point: LatLng(pos.latitude, pos.longitude),
-                          width: 40,
-                          height: 40,
-                          // PERBAIKAN V7: Ganti builder -> child
-                          child: const Icon(
-                            Icons.location_on,
-                            size: 40,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              );
-            }),
-          ),
-
-          // Info + Controls
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Obx(() {
-              final p = controller.currentPosition.value;
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    p == null
-                        ? 'Koordinat: - , Akurasi: -'
-                        : 'Lat: ${p.latitude.toStringAsFixed(6)}, Lng: ${p.longitude.toStringAsFixed(6)} — acc: ${p.accuracy.toStringAsFixed(1)} m',
-                    style: const TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    // Ganti Row dengan Wrap agar tidak overflow di layar kecil
-                    spacing: 8,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      ElevatedButton(
-                        onPressed: controller.isLoading.value
-                            ? null
-                            : controller.refreshOnce,
-                        child: controller.isLoading.value
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Text('Refresh'),
-                      ),
-                      ElevatedButton(
-                        onPressed: controller.isTracking.value
-                            ? controller.stopTracking
-                            : () => controller.startTracking(),
-                        child: Text(
-                          controller.isTracking.value
-                              ? 'Stop Live'
-                              : 'Start Live',
-                        ),
-                      ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
+                MarkerLayer(
+                  markers: [
+                    // MARKER WARUNG (TETAP)
+                    Marker(
+                      point: controller.warungLocation,
+                      width: 80,
+                      height: 80,
+                      child: const Column(
                         children: [
-                          Switch(
-                            value: controller.isGpsEnabled.value,
-                            onChanged: (v) => controller.toggleGpsMode(v),
+                          Icon(Icons.store, color: Colors.red, size: 40),
+                          Text(
+                            "WarPad",
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                              fontSize: 10,
+                            ),
                           ),
-                          const Text('GPS'),
                         ],
                       ),
-                      const SizedBox(width: 8),
-                      const Text('Distance:'),
-                      DropdownButton<int>(
-                        value: controller.distanceFilter.value,
-                        items: const [
-                          DropdownMenuItem(value: 1, child: Text('1m')),
-                          DropdownMenuItem(value: 3, child: Text('3m')),
-                          DropdownMenuItem(value: 5, child: Text('5m')),
-                          DropdownMenuItem(value: 10, child: Text('10m')),
+                    ),
+                    // MARKER USER (JIKA GPS NYALA)
+                    if (myPos != null)
+                      Marker(
+                        point: LatLng(myPos.latitude, myPos.longitude),
+                        width: 60,
+                        height: 60,
+                        child: const Icon(
+                          Icons.person_pin_circle,
+                          color: Colors.blue,
+                          size: 40,
+                        ),
+                      ),
+                  ],
+                ),
+                // GARIS PENGHUBUNG (OPSIONAL)
+                if (myPos != null)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: [
+                          LatLng(myPos.latitude, myPos.longitude),
+                          controller.warungLocation,
                         ],
-                        onChanged: (v) {
-                          if (v == null) return;
-                          controller.setDistanceFilter(v);
-                        },
+                        strokeWidth: 3.0,
+                        color: Colors.blueAccent,
                       ),
                     ],
                   ),
+              ],
+            );
+          }),
+
+          // 2. PANEL INFO BAWAH
+          Positioned(
+            bottom: 20,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 10)],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // --- BAGIAN ALAMAT DITAMBAHKAN DI SINI ---
+                  const Text(
+                    "Alamat WarPad:",
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    "Jl. Raya Bululawang No.45, Bululawang,\nKec. Bululawang, Kab. Malang, Jatim 65171",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(),
+                  const SizedBox(height: 10),
+
+                  // -----------------------------------------
+                  const Text(
+                    "Jarak Kamu ke WarPad",
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 5),
+                  Obx(
+                    () => Text(
+                      "${controller.distanceToWarung.value.toStringAsFixed(1)} KM",
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepOrange,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: controller.refreshOnce,
+                    icon: const Icon(Icons.my_location),
+                    label: const Text("Update Lokasi Saya"),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
                 ],
-              );
-            }),
+              ),
+            ),
           ),
         ],
       ),
